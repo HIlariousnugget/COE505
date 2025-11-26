@@ -50,7 +50,7 @@ public class COE505 {
 		Log.printLine("Starting COE505 Simulation...");
 		try {
 			Log.disable();
-			int num_user = 1;
+			int num_user = 2;
 			Calendar calendar = Calendar.getInstance();
 			boolean trace_flag = false;
 
@@ -71,8 +71,9 @@ public class COE505 {
 				createRandomMobilityDatasets(References.random_walk_mobility_model, datasetReference, renewDataset);
 			}
 
-			createMobileUser(broker.getId(), appId, datasetReference);
+            createMobileUser(broker.getId(), appId, datasetReference);
 			createFogDevices(broker.getId(), appId);
+
 
 			ModuleMapping moduleMapping = ModuleMapping.createModuleMapping();
 			moduleMapping.addModuleToDevice("storageModule", "cloud");
@@ -131,6 +132,15 @@ public class COE505 {
 			fogServer.setUplinkLatency(100);
 			fogDevices.add(fogServer);
 		}
+
+        for (int i = 0; i < locator.getLevelWiseResources(locator.getLevelID("Gateway")).size(); i++) {
+
+            FogDevice gateway = createFogDevice("gateway_" + i, 2800, 4000, 10000, 10000, 0.0, 107.339, 83.4333);
+            locator.linkDataWithInstance(gateway.getId(), locator.getLevelWiseResources(locator.getLevelID("Gateway")).get(i));
+            gateway.setParentId(locator.determineParent(gateway.getId(), References.SETUP_TIME));
+            gateway.setUplinkLatency(4);
+            fogDevices.add(gateway);
+        }
 	}
 
 	private static FogDevice addMobile(String name, int userId, String appId, int parentId) {

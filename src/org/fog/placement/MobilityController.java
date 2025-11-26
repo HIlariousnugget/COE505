@@ -178,7 +178,9 @@ public class MobilityController extends SimEntity{
 		// TODO Auto-generated method stub
 		FogDevice fogDevice = (FogDevice) ev.getData();
 		FogDevice prevParent = getFogDeviceById(parentReference.get(fogDevice.getId()));
-		FogDevice newParent = getFogDeviceById(locator.determineParent(fogDevice.getId(),CloudSim.clock()));
+        System.out.println(prevParent);
+        int pid = locator.determineParent(fogDevice.getId(),CloudSim.clock());
+		FogDevice newParent = getFogDeviceById(pid);
 		System.out.println(CloudSim.clock()+" Starting Mobility Management for "+fogDevice.getName());
 		parentReference.put(fogDevice.getId(),newParent.getId());
 		List<String>migratingModules = new ArrayList<String>();
