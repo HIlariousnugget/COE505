@@ -1,0 +1,32 @@
+ID,Latitude,Longitude,Block,Level,Parent,State,Details
+0,-37.8136,144.9631,0,0,-1,VIC,DataCenter
+3,-37.818903,144.95694,3,1,0,VIC,Block3 Proxy
+6,-37.817443,144.961784,6,1,0,VIC,Block6 Proxy
+17,-37.81808,144.95692,3,2,3,VIC,KING ST (3144 REPLACEMENT) -V 530 Collins Street MELBOURNE
+21,-37.816356,144.962313,6,2,6,VIC,360 Collins St Collins Wales Building MELBOURNE
+22,-37.818071,144.957211,3,2,3,VIC,Stock Exchange Bldg 530 Collins Street MELBOURNE
+27,-37.81852,144.957141,3,2,3,VIC,Rialto Towers 525 Collins Street MELBOURNE
+28,-37.817303,144.962344,6,2,6,VIC,367 Collins Street Optus Centre MELBOURNE
+29,-37.818162,144.959934,6,2,6,VIC,Optus Site National Mutual Building 447 Collins St MELBOURNE
+32,-37.818494,144.957705,3,2,3,VIC,Optus Site Rialto 525 Collins Street MELBOURNE
+37,-37.818166,144.964831,6,2,6,VIC,Optus Site Flinders/Elizabeth 1 Elizabeth St MELBOURNE
+38,-37.817384,144.959217,6,2,6,VIC,Optus Site Melbourne City West 454 Collins St MELBOURNE
+41,-37.818656,144.956626,3,2,3,VIC,Optus Site Minicell - King & Collins 539-557 Collins St MELBOURNE
+42,-37.817261,144.962515,6,2,6,VIC,Optus Site Bridge Information Systems 360 Collins St MELBOURNE
+48,-37.82091,144.955155,3,2,3,VIC,Optus Site Minicell - Flinders and Spencer 2 Spencer St MELBOURNE
+49,-37.820123,144.957552,3,2,3,VIC,Optus Site Minicell - King & Flinders King & Flinders St MELBOURNE
+52,-37.819576,144.95985,3,2,3,VIC,Optus Site Flinders/William 1 William St MELBOURNE
+53,-37.817069,144.961828,6,2,6,VIC,Optus Site Minicell - Collins & Queen 379 Collins St MELBOURNE
+54,-37.818218,144.960705,6,2,6,VIC,Optus Sire Minicell - Market & Flinders 50 Market St MELBOURNE
+68,-37.818018,144.964596,6,2,6,VIC,1 Elizabeth Street cnr Flinders St MELBOURNE
+77,-37.819471,144.960069,6,2,6,VIC,Optus Site 1 William St MELBOURNE
+86,-37.81653,144.961967,6,2,6,VIC,394 Collins St MELBOURNE
+91,-37.820744,144.955485,3,2,3,VIC,Hotham Hotel 2 Spencer St MELBOURNE
+92,-37.817483,144.959445,6,2,6,VIC,Optus Site 454 Collins St MELBOURNE
+98,-37.818474,144.956805,3,2,3,VIC,Optus Site 539-557 Collins St MELBOURNE
+103,-37.818151,144.96081,6,2,6,VIC,BTS Site 38465D Treasure Funds House 50 Market Street MELBOURNE
+106,-37.816822,144.963209,6,2,6,VIC,333 Collins Street MELBOURNE
+114,-37.816891,144.961957,6,2,6,VIC,Optus/Telstra Site cnr Collins & Queen Sts MELBOURNE
+119,-37.81922,144.958485,3,2,3,VIC,452-470 Flinders Street MELBOURNE
+123,-37.819101,144.954229,3,2,3,VIC,Optus Minicell NE Cnr Spencer St and Collins St MELBOURNE
+129,-37.817386,144.96123,6,2,6,VIC,Telstra IBC 401 Collins St MELBOURNE

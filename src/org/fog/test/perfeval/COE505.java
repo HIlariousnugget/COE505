@@ -127,20 +127,21 @@ public class COE505 {
 		// Create 2 fog servers
 		for (int i = 0; i < numberOfFogServers; i++) {
 			FogDevice fogServer = createFogDevice("fog-server_" + i, 2800, 4000, 10000, 10000, 0.0, 107.339, 83.4333);
-			locator.linkDataWithInstance(fogServer.getId(), locator.getLevelWiseResources(locator.getLevelID("Proxy")).get(i));
+			String dataID = locator.getLevelWiseResources(locator.getLevelID("Gateway")).get(i);
+            locator.linkDataWithInstance(fogServer.getId(), dataID);
 			fogServer.setParentId(cloud.getId());
 			fogServer.setUplinkLatency(100);
 			fogDevices.add(fogServer);
 		}
 
-        for (int i = 0; i < locator.getLevelWiseResources(locator.getLevelID("Gateway")).size(); i++) {
-
-            FogDevice gateway = createFogDevice("gateway_" + i, 2800, 4000, 10000, 10000, 0.0, 107.339, 83.4333);
-            locator.linkDataWithInstance(gateway.getId(), locator.getLevelWiseResources(locator.getLevelID("Gateway")).get(i));
-            gateway.setParentId(locator.determineParent(gateway.getId(), References.SETUP_TIME));
-            gateway.setUplinkLatency(4);
-            fogDevices.add(gateway);
-        }
+//        for (int i = 0; i < locator.getLevelWiseResources(locator.getLevelID("Gateway")).size(); i++) {
+//
+//            FogDevice gateway = createFogDevice("gateway_" + i, 2800, 4000, 10000, 10000, 0.0, 107.339, 83.4333);
+//            locator.linkDataWithInstance(gateway.getId(), locator.getLevelWiseResources(locator.getLevelID("Gateway")).get(i));
+//            gateway.setParentId(locator.determineParent(gateway.getId(), References.SETUP_TIME));
+//            gateway.setUplinkLatency(4);
+//            fogDevices.add(gateway);
+//        }
 	}
 
 	private static FogDevice addMobile(String name, int userId, String appId, int parentId) {
