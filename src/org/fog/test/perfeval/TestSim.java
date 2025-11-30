@@ -76,6 +76,20 @@ public class TestSim {
             ModuleMapping moduleMapping = ModuleMapping.createModuleMapping();
             moduleMapping.addModuleToDevice("storageModule", "cloud");
 
+            // Assign processingModule to the first gateway device
+            String gatewayName = null;
+            for (FogDevice dev : fogDevices) {
+                if (dev.getName().startsWith("gateway_")) {
+                    gatewayName = dev.getName();
+                    break;
+                }
+            }
+            if (gatewayName != null) {
+                moduleMapping.addModuleToDevice("processingModule", gatewayName);
+            } else {
+                System.out.println("No gateway device found for processingModule placement.");
+            }
+
             MobilityController controller = new MobilityController("mobility-controller", fogDevices, sensors, actuators, locator);
             controller.submitApplication(application, 0, (new ModulePlacementMobileEdgewards(fogDevices, sensors, actuators, application, moduleMapping)));
 
