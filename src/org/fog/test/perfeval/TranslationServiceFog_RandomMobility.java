@@ -47,7 +47,8 @@ public class TranslationServiceFog_RandomMobility {
     static boolean CLOUD = false;
 
     static double SENSOR_TRANSMISSION_TIME = 10;
-    static int numberOfMobileUser = 1;
+    static int numberOfMobileUser = 5
+            ;
 
     // if random mobility generator for users is True, new random dataset will be created for each user
     static boolean randomMobility_generator = true; // To use random datasets

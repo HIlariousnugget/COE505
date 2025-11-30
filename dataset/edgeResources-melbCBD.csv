@@ -1,4 +1,7 @@
 ID,Latitude,Longitude,Block,Level,Parent,State,Details
 0,-37.8136,144.9631,0,0,-1,VIC,DataCenter
-17,-37.81808,144.95692,3,1,0,VIC,KING ST (3144 REPLACEMENT) -V 530 Collins Street MELBOURNE
-48,-37.82091,144.955155,3,1,0,VIC,Optus Site Minicell - Flinders and Spencer 2 Spencer St MELBOURNE
+1,-37.813946,144.954633,1,1,0,VIC,Block1 Proxy
+2,-37.816762,144.955915,2,1,0,VIC,Block2 Proxy
+14,-37.81524,144.95256,1,2,1,VIC,Optus Minicell - Lon_Spencer Corner Spencer and Lonsdale St MELBOURNE
+20,-37.81285,144.955026,1,2,1,VIC,CGU Bldg 485 La Trobe Street MELBOURNE
+23,-37.818202,144.954367,2,2,2,VIC,625 Lt Collins St MELBOURNE

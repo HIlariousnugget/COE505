@@ -28,7 +28,7 @@ public class DataParser {
             props.load(reader);
             levelID.put("LevelsNum", Integer.parseInt(props.getProperty("Level")));
             levelID.put("Cloud", Integer.parseInt(props.getProperty("Cloud")));
-            //levelID.put("Proxy", Integer.parseInt(props.getProperty("Proxy")));
+            levelID.put("Proxy", Integer.parseInt(props.getProperty("Proxy")));
             levelID.put("Gateway", Integer.parseInt(props.getProperty("Gateway")));
             levelID.put("User", Integer.parseInt(props.getProperty("User")));
             reader.close();
