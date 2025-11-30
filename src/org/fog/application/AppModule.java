@@ -22,6 +22,7 @@ public class AppModule extends PowerVm{
 	private String name;
 	private String appId;
 	private Map<Pair<String, String>, SelectivityModel> selectivityMap;
+	private int deadline;
 	
 	/**
 	 * A map from the AppModules sending tuples UP to this module to their instance IDs.
@@ -52,6 +53,7 @@ public class AppModule extends PowerVm{
 			CloudletScheduler cloudletScheduler,
 			Map<Pair<String, String>, SelectivityModel> selectivityMap) {
 		super(id, userId, mips, 1, ram, bw, size, 1, vmm, cloudletScheduler, 300);
+		this.deadline=100;
 		setName(name);
 		setId(id);
 		setAppId(appId);
@@ -87,6 +89,10 @@ public class AppModule extends PowerVm{
 		setCurrentAllocatedSize(0);
 		setSelectivityMap(operator.getSelectivityMap());
 		setDownInstanceIdsMaps(new HashMap<String, List<Integer>>());
+	}
+
+	public int getDeadline() {
+		return this.deadline;
 	}
 	
 	public void subscribeActuator(int id, String tuplyType){

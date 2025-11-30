@@ -1,10 +1,7 @@
 package org.fog.placement;
 
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+
+import java.util.*;
 import java.util.stream.Collectors;
 
 import org.cloudbus.cloudsim.core.CloudSim;
@@ -16,6 +13,7 @@ import org.fog.application.Application;
 import org.fog.entities.Actuator;
 import org.fog.entities.FogDevice;
 import org.fog.entities.Sensor;
+import org.fog.placement.LocationHandler;
 import org.fog.mobilitydata.References;
 import org.fog.utils.Config;
 import org.fog.utils.FogEvents;
@@ -24,9 +22,47 @@ import org.fog.utils.MigrationDelayMonitor;
 import org.fog.utils.NetworkUsageMonitor;
 import org.fog.utils.TimeKeeper;
 import org.json.simple.JSONObject;
+import org.fog.placement.ModulePlacement;
+
 
 
 public class MobilityController extends SimEntity{
+			/** Returns the list of all fog devices (excluding cloud if needed). */
+			private List<FogDevice> getFogDevicesList() {
+				return getFogDevices();
+			}
+
+			/** Returns the total CPU capacity (MIPS) of the given fog device. */
+			private double getFogCpuCapacity(FogDevice fog) {
+				if (fog != null && fog.getHost() != null) {
+					return fog.getHost().getTotalMips();
+				}
+				return 0.0;
+			}
+
+			/** Returns the total memory capacity (RAM in MB) of the given fog device. */
+			private double getFogMemCapacity(FogDevice fog) {
+				if (fog != null && fog.getHost() != null && fog.getHost().getRamProvisioner() != null) {
+					return fog.getHost().getRamProvisioner().getRam();
+				}
+				return 0.0;
+			}
+
+			/** Returns the total bandwidth capacity (uplink BW in Mbps) of the given fog device. */
+			private double getFogBwCapacity(FogDevice fog) {
+				if (fog != null) {
+					return fog.getUplinkBandwidth();
+				}
+				return 0.0;
+			}
+		/** Returns the total CPU capacity (MIPS) of the cloud device. Returns 0 if not found. */
+		private double getCloudDeviceCpuCapacity() {
+			FogDevice cloud = getCloud();
+			if (cloud != null && cloud.getHost() != null) {
+				return cloud.getHost().getTotalMips();
+			}
+			return 0.0;
+		}
 	
 	public static boolean ONLY_CLOUD = false;
 		
@@ -42,6 +78,11 @@ public class MobilityController extends SimEntity{
 	
 
 	private Map<String, ModulePlacement> appModulePlacementPolicy;
+
+    //GPT
+    private static final int HMAX = 2;               // keep same semantics as your Hmax (tune as needed)
+    private static final double LAMBDA_CLOUD = 50.0;  // cloud penalty lambda (tune)
+    private static final double PRICE_STEP_ALPHA = 1e-4; // subgradient step (tune)
 	
 	public MobilityController(String name, List<FogDevice> fogDevices, List<Sensor> sensors, List<Actuator> actuators, LocationHandler locator) {
 		super(name);
@@ -174,61 +215,260 @@ public class MobilityController extends SimEntity{
 	}*/
 
 	@SuppressWarnings("unchecked")
-	private void processMobility(SimEvent ev) {
-		// TODO Auto-generated method stub
-		FogDevice fogDevice = (FogDevice) ev.getData();
-		FogDevice prevParent = getFogDeviceById(parentReference.get(fogDevice.getId()));
-        System.out.println(prevParent);
-        int pid = locator.determineParent(fogDevice.getId(),CloudSim.clock());
-		FogDevice newParent = getFogDeviceById(pid);
-		System.out.println(CloudSim.clock()+" Starting Mobility Management for "+fogDevice.getName());
-		parentReference.put(fogDevice.getId(),newParent.getId());
-		List<String>migratingModules = new ArrayList<String>();
-		if(prevParent.getId()!=newParent.getId()) {
-			//printFogDeviceChildren(newParent.getId());
-			//printFogDeviceChildren(prevParent.getId());
-			
-			//common ancestor policy
-			List<Integer>newParentPath = getPathsToCloud(newParent.getId());
-			List<Integer>prevParentPath = getPathsToCloud(prevParent.getId());
-			int commonAncestor = determineAncestor(newParentPath,prevParentPath);
-			
-			
-			fogDevice.setParentId(newParent.getId());
-			System.out.println("Child "+fogDevice.getName()+"\t----->\tParent "+newParent.getName());
-			newParent.getChildToLatencyMap().put(fogDevice.getId(), fogDevice.getUplinkLatency());
-			newParent.addChild(fogDevice.getId());
-			prevParent.removeChild(fogDevice.getId());
-			for(String applicationName:fogDevice.getActiveApplications()){
-				migratingModules = getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).get(prevParent.getId());
-				getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).remove(prevParent.getId());
-				getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).put(newParent.getId(),migratingModules);	
-				for(String moduleName:migratingModules){
-					double upDelay = getUpDelay(prevParent.getId(),commonAncestor,getApplications().get(applicationName).getModuleByName(moduleName));
-					double downDelay = getDownDelay(newParent.getId(),commonAncestor,getApplications().get(applicationName).getModuleByName(moduleName));
-					JSONObject jsonSend = new JSONObject();
-					jsonSend.put("module", getApplications().get(applicationName).getModuleByName(moduleName));
-					jsonSend.put("delay", upDelay);
-					
-					JSONObject jsonReceive = new JSONObject();
-					jsonReceive.put("module", getApplications().get(applicationName).getModuleByName(moduleName));
-					jsonReceive.put("delay", downDelay);
-					jsonReceive.put("application", getApplications().get(applicationName));
-					
-					send(prevParent.getId(),upDelay, FogEvents.MODULE_SEND, jsonSend);
-					send(newParent.getId(),downDelay, FogEvents.MODULE_RECEIVE, jsonReceive);
-					System.out.println("Migrating "+moduleName+" from "+prevParent.getName()+" to "+newParent.getName());
-				}
+//	private void processMobility(SimEvent ev) {
+//		// TODO Auto-generated method stub
+//		FogDevice fogDevice = (FogDevice) ev.getData();
+//		FogDevice prevParent = getFogDeviceById(parentReference.get(fogDevice.getId()));
+//        System.out.println(prevParent);
+//        int pid = locator.determineParent(fogDevice.getId(),CloudSim.clock());
+//		FogDevice newParent = getFogDeviceById(pid);
+//		System.out.println(CloudSim.clock()+" Starting Mobility Management for "+fogDevice.getName());
+//		parentReference.put(fogDevice.getId(),newParent.getId());
+//		List<String>migratingModules = new ArrayList<String>();
+//		if(prevParent.getId()!=newParent.getId()) {
+//			//printFogDeviceChildren(newParent.getId());
+//			//printFogDeviceChildren(prevParent.getId());
+//
+//			//common ancestor policy
+//			List<Integer>newParentPath = getPathsToCloud(newParent.getId());
+//			List<Integer>prevParentPath = getPathsToCloud(prevParent.getId());
+//			int commonAncestor = determineAncestor(newParentPath,prevParentPath);
+//
+//
+//			fogDevice.setParentId(newParent.getId());
+//			System.out.println("Child "+fogDevice.getName()+"\t----->\tParent "+newParent.getName());
+//			newParent.getChildToLatencyMap().put(fogDevice.getId(), fogDevice.getUplinkLatency());
+//			newParent.addChild(fogDevice.getId());
+//			prevParent.removeChild(fogDevice.getId());
+//			for(String applicationName:fogDevice.getActiveApplications()){
+//				migratingModules = getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).get(prevParent.getId());
+//				getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).remove(prevParent.getId());
+//				getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).put(newParent.getId(),migratingModules);
+//				for(String moduleName:migratingModules){
+//					double upDelay = getUpDelay(prevParent.getId(),commonAncestor,getApplications().get(applicationName).getModuleByName(moduleName));
+//					double downDelay = getDownDelay(newParent.getId(),commonAncestor,getApplications().get(applicationName).getModuleByName(moduleName));
+//					JSONObject jsonSend = new JSONObject();
+//					jsonSend.put("module", getApplications().get(applicationName).getModuleByName(moduleName));
+//					jsonSend.put("delay", upDelay);
+//
+//					JSONObject jsonReceive = new JSONObject();
+//					jsonReceive.put("module", getApplications().get(applicationName).getModuleByName(moduleName));
+//					jsonReceive.put("delay", downDelay);
+//					jsonReceive.put("application", getApplications().get(applicationName));
+//
+//					send(prevParent.getId(),upDelay, FogEvents.MODULE_SEND, jsonSend);
+//					send(newParent.getId(),downDelay, FogEvents.MODULE_RECEIVE, jsonReceive);
+//					System.out.println("Migrating "+moduleName+" from "+prevParent.getName()+" to "+newParent.getName());
+//				}
+//			}
+//
+//			// = get
+//			//printFogDeviceChildren(newParent.getId());
+//			//printFogDeviceChildren(prevParent.getId());
+//		}
+//
+//
+//
+//	}
+
+	/**
+	 * Returns the ID of the cloud FogDevice instance in the topology.
+	 * If not found, returns -1.
+	 */
+	public int getCloudInstanceId() {
+		for (FogDevice dev : getFogDevices()) {
+			if (dev.getName().equalsIgnoreCase("cloud")) {
+				return dev.getId();
 			}
-			
-			// = get
-			//printFogDeviceChildren(newParent.getId());
-			//printFogDeviceChildren(prevParent.getId());
 		}
-		
-		
-		
+		return -1;
 	}
+
+
+    private Map<Integer, Double> muCpuMap = new HashMap<>();
+    private Map<Integer, Double> muMemMap = new HashMap<>();
+    private Map<Integer, Double> muBwMap  = new HashMap<>();
+
+    private void processMobility(SimEvent ev) {
+        FogDevice fogDevice = (FogDevice) ev.getData();
+        int childId = fogDevice.getId();
+        FogDevice prevParent = getFogDeviceById(parentReference.get(childId));
+        int pid = locator.determineParent(childId, CloudSim.clock());
+        FogDevice newParent = getFogDeviceById(pid);
+        System.out.println("[" + CloudSim.clock() + "] Starting Mobility Management for " + fogDevice.getName());
+
+        // Quick exit if parent hasn't changed
+        if (prevParent == null || newParent == null) {
+            System.out.println("prevParent or newParent is null for device " + fogDevice.getName());
+            parentReference.put(childId, (newParent == null ? parentReference.get(childId) : newParent.getId()));
+            return;
+        }
+        if (prevParent.getId() == newParent.getId()) {
+            System.out.println("Parent unchanged for " + fogDevice.getName());
+            return;
+        }
+
+        // Update parent reference & topoSystem.out.printlny
+        parentReference.put(childId, newParent.getId());
+        fogDevice.setParentId(newParent.getId());
+        System.out.println("Child " + fogDevice.getName() + "\t----->\tParent " + newParent.getName());
+        newParent.getChildToLatencyMap().put(fogDevice.getId(), fogDevice.getUplinkLatency());
+        newParent.addChild(fogDevice.getId());
+        prevParent.removeChild(fogDevice.getId());
+
+        // Determine common ancestor to compute path delays if needed
+        List<Integer> newParentPath = getPathsToCloud(newParent.getId());
+        List<Integer> prevParentPath = getPathsToCloud(prevParent.getId());
+        int commonAncestor = determineAncestor(newParentPath, prevParentPath);
+
+        // Gather candidate fogs for decentralized selection: neighbors within HMAX hops of prev & new parent
+        Set<Integer> candidateFogIds = getCandidateFogsWithinHops(prevParent.getId(), newParent.getId(), HMAX);
+
+        // Ensure cloud is considered as a candidate (we will use CLOUD as special id -1)
+        final int CLOUD_INSTANCE_ID = -1; // special marker for cloud
+        candidateFogIds.add(CLOUD_INSTANCE_ID);
+
+        // For each application on this moving device, decide which modules to migrate and where
+        for (String applicationName : fogDevice.getActiveApplications()) {
+            // modules originally planned on prevParent for this device
+            List<String> migratingModules = getAppModulePlacementPolicy()
+                    .get(applicationName)
+                    .getModulesOnPath()
+                    .get(fogDevice.getId())
+                    .get(prevParent.getId());
+
+            if (migratingModules == null) continue;
+
+            // For each module, run decentralized selection using local prices
+            for (String moduleName : migratingModules) {
+                AppModule module = getApplications().get(applicationName).getModuleByName(moduleName);
+                // Compute per-candidate cost and pick best
+                double bestCost = Double.POSITIVE_INFINITY;
+                int bestFogId = prevParent.getId(); // default fallback
+                boolean bestIsCloud = false;
+
+                // Estimate the uplink (device -> serving fog). We use fogDevice.getUplinkLatency()
+                double ui = fogDevice.getUplinkLatency();
+
+                // Iterate candidate fogs
+                for (Integer candId : candidateFogIds) {
+                    if (candId == CLOUD_INSTANCE_ID) {
+                        // cloud cost
+                        double ds_cloud = getDownDelay(prevParent.getId(), commonAncestor, module); // approximate path to cloud
+                        // processing time at cloud - try get from module (if you have a method) else fallback
+                        double p_ic = estimateProcessingTimeAtCloud(module);
+                        double latencyEstimate = ui + ds_cloud + p_ic;
+                        if (latencyEstimate > module.getDeadline()) {
+                            continue; // infeasible w.r.t deadline
+                        }
+                        double cost = ui + ds_cloud + p_ic + LAMBDA_CLOUD;
+                        if (cost < bestCost) {
+                            bestCost = cost;
+                            bestIsCloud = true;
+                            bestFogId = CLOUD_INSTANCE_ID;
+                        }
+                        continue;
+                    }
+
+                    FogDevice candFog = getFogDeviceById(candId);
+                    if (candFog == null) continue;
+
+                    // Build cost terms
+                    double ds = getUpDelay(prevParent.getId(), candId, module); // network cost prevParent->cand (proxy for ds(s(i),f))
+                    // q_i_f : try to estimate via fog's local queue length (if available) else 0
+                    double q_if = estimateQueueingDelay(candFog, module);
+                    double p_if = estimateProcessingTimeAtFog(module, candFog);
+
+                    // mobility indicator Ii,f: from RSSI or predicted sojourn. We try to use available API, fallback to 0
+                    int Ii = determineMobilityIndicatorFor(candFog, fogDevice, module);
+
+                    // handoff/migration expected delay if Ii==1
+                    double H_if = Ii == 1 ? estimateHandoffDelay(candFog, module) : 0.0;
+
+                    // resource demands: cpuDemand, memDemand, bwDemand (try to read from module)
+                    double cpuDemand = estimateCpuDemand(module);   // MI or MIPS required over horizon
+                    double memDemand = estimateMemDemand(module);
+                    double bwDemand  = estimateBwDemand(module);
+
+                    // current prices for candidate fog (default to 0 if not initialized)
+                    double muCpu = muCpuMap.getOrDefault(candId, 0.0);
+                    double muMem = muMemMap.getOrDefault(candId, 0.0);
+                    double muBw  = muBwMap.getOrDefault(candId, 0.0);
+
+                    // Lagrangian price term
+                    double priceTerm = muCpu * cpuDemand + muMem * memDemand + muBw * bwDemand;
+
+                    // full cost
+                    double cost = ui + ds + q_if + p_if + priceTerm + H_if;
+
+                    // Deadline feasibility check (optional)
+                    double latencyEstimate = ui + ds + q_if + p_if + H_if;
+                    if (latencyEstimate > module.getDeadline()) {
+                        // infeasible due to deadline — skip candidate
+                        continue;
+                    }
+
+                    if (cost < bestCost) {
+                        bestCost = cost;
+                        bestFogId = candId;
+                        bestIsCloud = false;
+                    }
+                } // end candidate iteration
+
+                // If bestFogId differs from prevParent/newParent, perform migration sends similar to original code.
+                // We keep previous behavior of send(prevParent, MODULE_SEND) and send(newParent, MODULE_RECEIVE),
+                // but target fog becomes the chosen fog.
+                if (bestIsCloud) {
+                    // send module to cloud (use prevParent path to cloud)
+                    double upDelay = getUpDelay(prevParent.getId(), commonAncestor, module);
+                    double downDelay = getDownDelay(prevParent.getId(), commonAncestor, module);
+                    JSONObject jsonSend = new JSONObject();
+                    jsonSend.put("module", module);
+                    jsonSend.put("delay", upDelay);
+                    JSONObject jsonReceive = new JSONObject();
+                    jsonReceive.put("module", module);
+                    jsonReceive.put("delay", downDelay);
+                    jsonReceive.put("application", getApplications().get(applicationName));
+                    // send to prevParent for uplink to cloud and to cloud (cloud instance id = getCloudDeviceId() or similar)
+                    int cloudInst = getCloudInstanceId(); // implement this helper if not present
+                    send(prevParent.getId(), upDelay, FogEvents.MODULE_SEND, jsonSend);
+                    send(cloudInst, downDelay, FogEvents.MODULE_RECEIVE, jsonReceive);
+                    System.out.println("Migrating module " + module.getName() + " from " + prevParent.getName() + " to CLOUD");
+                } else {
+                    if (bestFogId != prevParent.getId()) {
+                        FogDevice targetFog = getFogDeviceById(bestFogId);
+                        double upDelay = getUpDelay(prevParent.getId(), commonAncestor, module);
+                        double downDelay = getDownDelay(bestFogId, commonAncestor, module);
+                        JSONObject jsonSend = new JSONObject();
+                        jsonSend.put("module", module);
+                        jsonSend.put("delay", upDelay);
+                        JSONObject jsonReceive = new JSONObject();
+                        jsonReceive.put("module", module);
+                        jsonReceive.put("delay", downDelay);
+                        jsonReceive.put("application", getApplications().get(applicationName));
+                        send(prevParent.getId(), upDelay, FogEvents.MODULE_SEND, jsonSend);
+                        send(bestFogId, downDelay, FogEvents.MODULE_RECEIVE, jsonReceive);
+                        System.out.println("Migrating module " + module.getName() + " from " + prevParent.getName() + " to " + targetFog.getName());
+                        // update placement maps accordingly (similar to your original code)
+                        // remove from prevParent mapping and add to new mapping
+                        List<String> prevList = getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).get(prevParent.getId());
+                        if (prevList != null) {
+                            getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).remove(prevParent.getId());
+                        }
+                        getAppModulePlacementPolicy().get(applicationName).getModulesOnPath().get(fogDevice.getId()).put(bestFogId, Arrays.asList(module.getName()));
+                    } else {
+                        // If chosen fog equals prevParent, we keep module where it is; nothing to do
+                        System.out.println("Module " + module.getName() + " remains at " + prevParent.getName());
+                    }
+                } // end if cloud or fog
+            } // end module loop
+        } // end application loop
+
+        // After making assignments, aggregate usage and update local prices (synchronous update step)
+        updateFogPricesAfterAssignments();
+
+        // done
+    }
 
 	private double getDownDelay(int deviceID, int commonAncestorID, AppModule module) {
 		// TODO Auto-generated method stub
@@ -465,4 +705,146 @@ public class MobilityController extends SimEntity{
 	public void setLocator(LocationHandler locator) {
 		this.locator = locator;
 	}
+
+    /** Helper: gathers candidate fog IDs within H hops of the prev/new parent.
+     * We walk the paths-to-cloud returned by getPathsToCloud to estimate hop distances.
+     */
+    private Set<Integer> getCandidateFogsWithinHops(int prevParentId, int newParentId, int H) {
+        Set<Integer> candidates = new HashSet<>();
+        // Add prev and new parent and their ancestors up to H hops
+        List<Integer> prevPath = getPathsToCloud(prevParentId);
+        List<Integer> newPath = getPathsToCloud(newParentId);
+        // Add nodes within H distance along each path
+        for (int i = 0; i < prevPath.size() && i <= H; i++) candidates.add(prevPath.get(i));
+        for (int i = 0; i < newPath.size() && i <= H; i++) candidates.add(newPath.get(i));
+        // Also add siblings: children of those ancestors within H hops (if you have such mapping)
+        // (Optional) Add other one-hop neighbor fogs if you maintain a neighbor graph.
+        return candidates;
+    }
+
+    /** Estimate queueing delay at a fog for the given module.
+     * If you have instantaneous queue-length / service rate info in FogDevice, use that.
+     * Here we fallback to a small default.
+     */
+    private double estimateQueueingDelay(FogDevice fog, AppModule module) {
+        // TODO: adapt to your fog device API (eg fog.getCurrentQueueLength(), fog.getServiceRate())
+        if (fog.getChildToLatencyMap() != null) {
+            // placeholder: use a small constant or computed M/M/1 estimate
+            return 1.0;
+        }
+        return 1.0;
+    }
+
+    /** Estimate processing time of the module at the candidate fog */
+    private double estimateProcessingTimeAtFog(AppModule module, FogDevice fog) {
+        // TODO: map module processing demand to wi and fog CPU capacity to Ccpu.
+        // If module has getRequiredMips() and fog has getTotalMips(), use
+        // p_if = module.getRequiredMips() / fog.getCpuCapacity()
+        double moduleMi = estimateCpuDemand(module);
+        double fogCpu = fog.getHost().getTotalMips(); // adapt as necessary
+        if (fogCpu <= 0) return Double.POSITIVE_INFINITY;
+        return moduleMi / fogCpu;
+    }
+
+    /** Estimate processing time at cloud for module */
+    private double estimateProcessingTimeAtCloud(AppModule module) {
+        // TODO: implement or use a configured cloud CPU capacity
+        double moduleMi = estimateCpuDemand(module);
+        double cloudCpu = getCloudDeviceCpuCapacity();
+        if (cloudCpu <= 0) return Double.POSITIVE_INFINITY;
+        return moduleMi / cloudCpu;
+    }
+
+    /** Mobility indicator detection: use RSSI or predicted sojourn if available, otherwise fallback to 0. */
+    private int determineMobilityIndicatorFor(FogDevice fog, FogDevice movingDevice, AppModule module) {
+        // If you have RSSI: if (rssi < tau_rssi || sojourn < tau_stay) return 1; else 0.
+        // For now fallback to 0 (no handoff). You should adapt to use your actual RSSI / sojourn API.
+        return 0;
+    }
+
+    /** Estimate expected handoff/migration delay for module at fog. */
+    private double estimateHandoffDelay(FogDevice fog, AppModule module) {
+        // TODO: return measured migration/handoff delay for module, or a configured constant
+        return 10.0;
+    }
+
+    /** Try reading CPU demand (MI) from module */
+    private double estimateCpuDemand(AppModule module) {
+        // TODO: adapt to your module model. Example: module.getSize() or module.getRequiredMips()
+        try {
+            return module.getSize(); // or getRequiredMips, whichever represents the amount of work
+        } catch (Exception e) {
+            return 1000.0;
+        }
+    }
+
+    /** Try reading memory demand (MB) from module */
+    private double estimateMemDemand(AppModule module) {
+        // TODO
+        return module.getRam();
+    }
+
+    /** Try reading bandwidth demand from module (for state transfer/result return) */
+    private double estimateBwDemand(AppModule module) {
+        // TODO
+        return 50.0;
+    }
+
+    /** Aggregate current assignments and update local Lagrange multipliers (mu maps) */
+    private void updateFogPricesAfterAssignments() {
+        // Compute aggregated usage for each fog from current placement maps (getAppModulePlacementPolicy())
+        Map<Integer, Double> usageCpu = new HashMap<>();
+        Map<Integer, Double> usageMem = new HashMap<>();
+        Map<Integer, Double> usageBw  = new HashMap<>();
+
+        // Walk over all apps and module placements to accumulate demand per fog
+		for (String appName : getAppModulePlacementPolicy().keySet()) {
+			ModulePlacement modulePlacement = getAppModulePlacementPolicy().get(appName);
+			// modulePlacement.getModulesOnPath() returns mapping: deviceId -> (fogId -> List<moduleNames>)
+			for (Integer deviceId : modulePlacement.getModulesOnPath().keySet()) {
+				Map<Integer, List<String>> fogMap = modulePlacement.getModulesOnPath().get(deviceId);
+				for (Integer fogId : fogMap.keySet()) {
+					if (!usageCpu.containsKey(fogId)) {
+						usageCpu.put(fogId, 0.0);
+						usageMem.put(fogId, 0.0);
+						usageBw.put(fogId, 0.0);
+					}
+					for (String modName : fogMap.get(fogId)) {
+						AppModule module = getApplications().get(appName).getModuleByName(modName);
+						double cpu = estimateCpuDemand(module);
+						double mem = estimateMemDemand(module);
+						double bw  = estimateBwDemand(module);
+						usageCpu.put(fogId, usageCpu.get(fogId) + cpu);
+						usageMem.put(fogId, usageMem.get(fogId) + mem);
+						usageBw.put(fogId, usageBw.get(fogId) + bw);
+					}
+				}
+			}
+		}
+
+        // Update mu maps: mu <- max(0, mu + alpha * (usage - capacity))
+        for (FogDevice fog : getFogDevicesList()) {
+            int id = fog.getId();
+            double usageC = usageCpu.getOrDefault(id, 0.0);
+            double usageM = usageMem.getOrDefault(id, 0.0);
+            double usageB = usageBw.getOrDefault(id, 0.0);
+
+            double capC = getFogCpuCapacity(fog); // implement helper to read capacity in same units as cpu demand
+            double capM = getFogMemCapacity(fog);
+            double capB = getFogBwCapacity(fog);
+
+            double muC = muCpuMap.getOrDefault(id, 0.0);
+            double muM = muMemMap.getOrDefault(id, 0.0);
+            double muB = muBwMap.getOrDefault(id, 0.0);
+
+            muC = Math.max(0.0, muC + PRICE_STEP_ALPHA * (usageC - capC));
+            muM = Math.max(0.0, muM + PRICE_STEP_ALPHA * (usageM - capM));
+            muB = Math.max(0.0, muB + PRICE_STEP_ALPHA * (usageB - capB));
+
+            muCpuMap.put(id, muC);
+            muMemMap.put(id, muM);
+            muBwMap.put(id, muB);
+        }
+    }
+
 }

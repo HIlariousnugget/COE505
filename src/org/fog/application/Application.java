@@ -45,6 +45,8 @@ public class Application {
 
 	protected DAG dag;
 
+	private int deadline;
+
 	/**
 	 * Creates a plain vanilla application with no modules and edges.
 	 * @param appId
@@ -157,6 +159,7 @@ public class Application {
 		setGeoCoverage(null);
 		setLoops(new ArrayList<AppLoop>());
 		setEdgeMap(new HashMap<String, AppEdge>());
+		this.deadline = 100;
 	}
 	
 	public Application(String appId, List<AppModule> modules,
@@ -170,6 +173,7 @@ public class Application {
 		for(AppEdge edge : edges){
 			getEdgeMap().put(edge.getTupleType(), edge);
 		}
+		this.deadline = 100;
 	}
 
 	/**
@@ -311,6 +315,10 @@ public class Application {
 		return null;
 	}
 	
+	public int getDeadline() {
+		return deadline;
+	}
+
 	public String getAppId() {
 		return appId;
 	}
