@@ -316,6 +316,7 @@ public class FogDevice extends PowerDatacenter {
             for (Vm vm : getHost().getVmList()) {
                 if (vm instanceof AppModule) {
                     modules.add((AppModule) vm);
+                    break;
                 }
             }
             return modules;
