@@ -45,7 +45,7 @@ public class Application {
 
 	protected DAG dag;
 
-	private int deadline;
+	private int deadline = 200;
 
 	/**
 	 * Creates a plain vanilla application with no modules and edges.

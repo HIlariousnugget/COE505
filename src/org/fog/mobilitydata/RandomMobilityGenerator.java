@@ -20,6 +20,8 @@ public class RandomMobilityGenerator {
     protected Map<Integer, Double> mobilityPositionsPauseTime;
     protected Map<Integer, Double> mobilityPositionsAngle;
     protected Map<Integer, Double> mobilityPositionsSpeed;
+    /** Instance RNG used for reproducible, per-user-seeded mobility. */
+    private Random rand;
     double speed;
     double angle;
     double pauseTime;
@@ -32,16 +34,19 @@ public class RandomMobilityGenerator {
         mobilityPositionsAngle = new HashMap<>(); //it shows the direction of the move for the next period of the time
         mobilityPositionsSpeed = new HashMap<>(); //it shows the speed of the move for the next period of the time
         mobilitySpecJSON = new JSONArray();
+        this.rand = new Random();
     }
 
-    private static int getRandomNumberInRange(int min, int max) {
+    /**
+     * Returns an integer in [min, max], inclusive, using the instance RNG.
+     */
+    private int getRandomInRange(int min, int max) {
 
         if (min >= max) {
             throw new IllegalArgumentException("max must be greater than min");
         }
 
-        Random r = new Random();
-        return r.nextInt((max - min) + 1) + min;
+        return rand.nextInt((max - min) + 1) + min;
     }
 
     private static boolean positionInRangeCheck(float x, float y) {
@@ -107,7 +112,10 @@ public class RandomMobilityGenerator {
         this.mobilityPositionsAngle.clear();
         this.mobilityPositionsSpeed.clear();
         this.mobilitySpecJSON.clear();
-        Random r = new Random();
+        // Seed the RNG uniquely per user to generate distinct paths per user.
+        // Use a stable base plus user_index for reproducibility across runs.
+        long seedBase = 12345L;
+        this.rand = new Random(seedBase + user_index);
 
         boolean file = false;
 
@@ -115,12 +123,14 @@ public class RandomMobilityGenerator {
         if (file == false) {
             List<ArrayList<Double>> tempPositions = new ArrayList<ArrayList<Double>>();
             tempPositions.add(new ArrayList<Double>());
-            double positionX = References.lat_reference;
-            double positionY = References.long_reference;
+            // Start with a random jitter around the reference point to diversify initial gateways
+            double initialJitter = 0.01; // Approx 1km jitter, adjust as needed
+            double positionX = References.lat_reference + (rand.nextDouble() - 0.5) * initialJitter;
+            double positionY = References.long_reference + (rand.nextDouble() - 0.5) * initialJitter;
             tempPositions.get(0).add(positionX);
             tempPositions.get(0).add(positionY);
 
-            this.angle = getRandomNumberInRange(0, 259);
+            this.angle = getRandomInRange(0, 259);
             directionFlag = true;
             int index = 1;
             int tempIndex = 0;
@@ -129,7 +139,7 @@ public class RandomMobilityGenerator {
             this.mobilityPositionsAngle.put(0, angle);
             while (tempIndex < numberOfPositions) {
                 int pause_time_multiplier = 3;
-                this.mobilityPositionsPauseTime.put(tempIndex, r.nextDouble() * pause_time_multiplier);
+                this.mobilityPositionsPauseTime.put(tempIndex, rand.nextDouble() * pause_time_multiplier);
                 tempIndex++;
 
             }
@@ -142,10 +152,10 @@ public class RandomMobilityGenerator {
             this.mobilitySpecJSON.add(obj);
             while (index < numberOfPositions) {
                 if (this.directionFlag == false || mobilityModel == References.random_walk_mobility_model) {
-                    this.angle = getRandomNumberInRange(0, 259); // Random direction.
+                    this.angle = getRandomInRange(0, 259); // Random direction.
                     this.directionFlag = true;
                 }
-                double mobilitySpeed = (double) (getRandomNumberInRange((int) References.MinMobilitySpeed * 100,
+                double mobilitySpeed = (double) (getRandomInRange((int) References.MinMobilitySpeed * 100,
                         (int) References.MaxMobilitySpeed * 100)) / 100; // meter/seconds
                 tempPositions.add(new ArrayList<Double>());
 

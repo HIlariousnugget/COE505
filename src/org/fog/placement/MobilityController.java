@@ -19,6 +19,7 @@ import org.fog.utils.Config;
 import org.fog.utils.FogEvents;
 import org.fog.utils.FogUtils;
 import org.fog.utils.MigrationDelayMonitor;
+import org.fog.utils.MobilityStats;
 import org.fog.utils.NetworkUsageMonitor;
 import org.fog.utils.TimeKeeper;
 import org.json.simple.JSONObject;
@@ -193,6 +194,7 @@ public class MobilityController extends SimEntity{
 			printCostDetails();
 			printNetworkUsageDetails();
 			printMigrationDelayDetails();
+			printMobilityStatistics();
 			System.exit(0);
 			break;
 
@@ -204,6 +206,19 @@ public class MobilityController extends SimEntity{
 	private void printMigrationDelayDetails() {
 		// TODO Auto-generated method stub
 		System.out.println("Total time required for module migration = "+MigrationDelayMonitor.getMigrationDelay());
+	}
+
+	private void printMobilityStatistics() {
+		System.out.println("=========================================");
+		System.out.println("====== MOBILITY / PLACEMENT METRICS =====");
+		System.out.println("=========================================");
+		System.out.println("Average end-to-end latency (Li)        = " + MobilityStats.getAverageLatency());
+		System.out.println("Deadline satisfaction ratio             = " + MobilityStats.getDeadlineSatisfactionRatio());
+		System.out.println("Fog-to-fog offload count                = " + MobilityStats.getFogToFogOffloadCount());
+		System.out.println("Cloud offload count                     = " + MobilityStats.getCloudOffloadCount());
+		System.out.println("Cloud usage ratio (cloud / all offloads)= " + MobilityStats.getCloudUsageRatio());
+		System.out.println("Total completed tasks                   = " + MobilityStats.getCompletedTasks());
+		System.out.println("=========================================");
 	}
 
 	/*private void printFogDeviceChildren(int deviceID) {

@@ -41,7 +41,7 @@ public class TestSim {
     static int numberOfCloud = 1;
 
     static boolean randomMobility_generator = true; // To use random datasets
-    static boolean renewDataset = false; // To overwrite existing random datasets
+    static boolean renewDataset = true; // To overwrite existing random datasets
 
     public static void main(String[] args) {
         Log.printLine("Starting Mobility Test Simulation...");
@@ -155,7 +155,8 @@ public class TestSim {
 
             for (int i = 0; i < locator.getLevelWiseResources(locator.getLevelID("Gateway")).size(); i++) {
 
-                FogDevice gateway = createFogDevice("gateway_" + i, 2800, 8192, 50, 20, 206, 170);
+                // Boosted MIPS and RAM to host more processingModule instances per gateway
+                FogDevice gateway = createFogDevice("gateway_" + i, 20000, 32768, 50, 20, 206, 170);
                 locator.linkDataWithInstance(gateway.getId(), locator.getLevelWiseResources(locator.getLevelID("Gateway")).get(i));
                 gateway.setParentId(locator.determineParent(gateway.getId(), References.SETUP_TIME));
                 gateway.setUplinkLatency(4);

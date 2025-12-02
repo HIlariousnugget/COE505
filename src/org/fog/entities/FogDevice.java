@@ -361,15 +361,15 @@ public class FogDevice extends PowerDatacenter {
     }
 
     /** Decentralized migration placement decision. Returns new parent ID or -1 for cloud. */
-    public int decideNewParent(FogDevice currentParent, AppModule module, List<FogDevice> neighbors, LocationHandler locator, double lambdaCloud, Map<Integer, Double> muCpuMap, Map<Integer, Double> muMemMap, Map<Integer, Double> muBwMap) {
+    public int decideNewParent(FogDevice currentParent, AppModule module, List<FogDevice> neighbors, FogDevice cloud_device, LocationHandler locator, double lambdaCloud, Map<Integer, Double> muCpuMap, Map<Integer, Double> muMemMap, Map<Integer, Double> muBwMap) {
         double bestCost = Double.POSITIVE_INFINITY;
         int bestFogId = currentParent.getId(); // default to self
         boolean bestIsCloud = false;
         double ui = currentParent.getUplinkLatency();
+        double ds = ui;
         for (FogDevice neighbor : neighbors) {
             double distance_user = calculateDistance(locator.getUserLocationInfo(locator.getDataIdByInstanceID(getId()),CloudSim.clock()),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(neighbor.getId())));
             ui = neighbor.getUplinkLatency()*1/distance_user;
-            double ds = ui;
             double distance_neighbor = calculateDistance(locator.getResourceLocationInfo(locator.getDataIdByInstanceID(currentParent.getId())),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(neighbor.getId())));
             if (distance_neighbor != 0) {
                 ds = ds * 1 / distance_neighbor;
@@ -392,14 +392,30 @@ public class FogDevice extends PowerDatacenter {
             }
         }
         // Cloud option
-        double distance_cloud = calculateDistance(locator.getResourceLocationInfo(locator.getDataIdByInstanceID(currentParent.getId())),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(33)));
-        ui = currentParent.getUplinkLatency()*1/distance_cloud;
-        double cloudCost = ui + lambdaCloud;
+        double distance_cloud_current= calculateDistance(locator.getResourceLocationInfo(locator.getDataIdByInstanceID(currentParent.getId())),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(cloud_device.getId())));
+        double distance_cloud_user = calculateDistance(locator.getUserLocationInfo(locator.getDataIdByInstanceID(getId()),CloudSim.clock()),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(cloud_device.getId())));
+        ui = currentParent.getUplinkLatency()*1/distance_cloud_user;
+        ds = currentParent.getUplinkLatency()*1/distance_cloud_current;
+        double cloudCost = ui + ds + lambdaCloud;
         if (cloudCost < bestCost) {
             bestFogId = -1;
             bestIsCloud = true;
         }
         return bestFogId;
+    }
+
+    /**
+     * Finds and returns the FogDevice instance representing the cloud.
+     * @param fogs The list of all fog devices.
+     * @return The cloud FogDevice object, or null if not found.
+     */
+    protected FogDevice getCloud(List<FogDevice> fogs){
+        for (FogDevice fd : fogs) {
+            if (fd.getName().equalsIgnoreCase("cloud")) {
+                return fd;
+            }
+        }
+        return null;
     }
 
     /** Handles decentralized migration placement at fog node. */
@@ -414,7 +430,8 @@ public class FogDevice extends PowerDatacenter {
 
     /** Handles decentralized migration placement at fog node with locator. */
     protected void handleDecentralizedMobilityPlacement(FogDevice movingDevice, LocationHandler locator,List<FogDevice> fogs) {
-        FogDevice currentParent = (FogDevice) CloudSim.getEntity(getParentId());
+        // Use the moving device's current parent, not this device's parent
+        FogDevice currentParent = (FogDevice) CloudSim.getEntity(movingDevice.getParentId());
         Integer parentLevel = 2;
         // For each application, get modules to migrate
         for (String applicationName : currentParent.getActiveApplications()) {
@@ -447,19 +464,18 @@ public class FogDevice extends PowerDatacenter {
             Map<Integer, Double> muCpuMap = new HashMap<>();
             Map<Integer, Double> muMemMap = new HashMap<>();
             Map<Integer, Double> muBwMap = new HashMap<>();
-            double lambdaCloud = 50.0;
+            double lambdaCloud = 0.5;
 
-            // Find cloud device id to support migration to cloud
-            int cloudId = -1;
-            for (FogDevice fd : fogs) {
-                if (fd.getName().equalsIgnoreCase("cloud")) {
-                    cloudId = fd.getId();
-                    break;
-                }
-            }
+            // Find cloud device to support migration to cloud
+            FogDevice cloud_device = getCloud(fogs);
+            int cloudId = (cloud_device != null) ? cloud_device.getId() : -1;
 
             for (AppModule module : modulesToMigrate) {
-                int newParentId = decideNewParent(currentParent, module, neighbors, locator, lambdaCloud, muCpuMap, muMemMap, muBwMap);
+                // Do not migrate modules that are intended to stay on a fixed device (e.g., cloud).
+                if ("storageModule".equalsIgnoreCase(module.getName())) {
+                    continue;
+                }
+                int newParentId = decideNewParent(currentParent, module, neighbors, cloud_device, locator, lambdaCloud, muCpuMap, muMemMap, muBwMap);
 
                 // Keep module on current parent if decision says so
                 if (newParentId == currentParent.getId()) {
@@ -473,9 +489,7 @@ public class FogDevice extends PowerDatacenter {
                 if (newParentId == -1) {
                     // Migrate to cloud
                     migrateToCloud = true;
-                    if (cloudId != -1) {
-                        targetParent = (FogDevice) CloudSim.getEntity(cloudId);
-                    }
+                    targetParent = cloud_device;
                 } else {
                     // Migrate to another fog device
                     targetParent = (FogDevice) CloudSim.getEntity(newParentId);
@@ -504,8 +518,12 @@ public class FogDevice extends PowerDatacenter {
                 send(targetParent.getId(), downDelay, FogEvents.MODULE_RECEIVE, jsonReceive);
 
                 if (migrateToCloud) {
+                    // Count fog-to-cloud offload
+                    MobilityStats.incrementCloudOffload();
                     System.out.println("FogDevice " + currentParent.getName() + ": Migrated module " + module.getName() + " to CLOUD");
                 } else {
+                    // Count fog-to-fog offload
+                    MobilityStats.incrementFogToFogOffload();
                     System.out.println("FogDevice " + currentParent.getName() + ": Migrated module " + module.getName() + " to FogDevice " + targetParent.getName());
                 }
             }
@@ -903,6 +921,9 @@ public class FogDevice extends PowerDatacenter {
         }
 
         if (tuple.getDirection() == Tuple.ACTUATOR) {
+            // Ensure we record end-to-end latency and deadline satisfaction for
+            // loops that terminate at an actuator before delivering and returning.
+            updateTimingsOnReceipt(tuple);
             sendTupleToActuator(tuple);
             return;
         }
@@ -985,6 +1006,10 @@ public class FogDevice extends PowerDatacenter {
                 double newAverage = (currentAverage * currentCount + delay) / (currentCount + 1);
                 TimeKeeper.getInstance().getLoopIdToCurrentAverage().put(loop.getLoopId(), newAverage);
                 TimeKeeper.getInstance().getLoopIdToCurrentNum().put(loop.getLoopId(), currentCount + 1);
+
+                // Record latency and deadline satisfaction for global mobility statistics
+                boolean satisfied = delay <= app.getDeadline();
+                MobilityStats.recordLatencyAndDeadline(delay, satisfied);
                 break;
             }
         }
