@@ -310,16 +310,36 @@ public class FogDevice extends PowerDatacenter {
         }
     }
 
-            /** Returns the list of AppModule instances currently running on this device. */
+    /** Returns the list of AppModule instances currently running on this device. */
     public List<AppModule> getActiveModules() {
-            List<AppModule> modules = new ArrayList<>();
-            for (Vm vm : getHost().getVmList()) {
-                if (vm instanceof AppModule) {
-                    modules.add((AppModule) vm);
-                    break;
-                }
+        List<AppModule> modules = new ArrayList<>();
+        for (Vm vm : getHost().getVmList()) {
+            if (vm instanceof AppModule) {
+                modules.add((AppModule) vm);
             }
-            return modules;
+        }
+        return modules;
+    }
+
+    /**
+     * Computes FCFS queue delay q_{i,f} for a new task i at fog node f.
+     * The queue is assumed FCFS and the delay is the sum of processing times of
+     * all tasks currently in the queue: q_{i,f} = sum_{j in Queue_f} p_{j,f}.
+     *
+     * Here we approximate the queue contents by the set of currently active modules
+     * running on the target device.
+     */
+    protected double computeQueueDelay(FogDevice targetFog) {
+        double totalDelay = 0.0;
+        double totalMips = targetFog.getHost().getTotalMips();
+        if (totalMips <= 0) {
+            return 0.0;
+        }
+        for (AppModule runningModule : targetFog.getActiveModules()) {
+            double p_jf = runningModule.getSize() / totalMips;
+            totalDelay += p_jf;
+        }
+        return totalDelay;
     }
 
     public static double calculateDistance(Location loc1, Location loc2) {
@@ -354,7 +374,8 @@ public class FogDevice extends PowerDatacenter {
             if (distance_neighbor != 0) {
                 ds = ds * 1 / distance_neighbor;
             }
-            double q_if = 1.0; // Placeholder queueing delay
+            // FCFS queue delay at neighbor: q_{i,f} = sum_{j in Queue_f} p_{j,f}
+            double q_if = computeQueueDelay(neighbor);
             double p_if = module.getSize() / neighbor.getHost().getTotalMips();
             double cpuDemand = module.getSize();
             double memDemand = module.getRam();
@@ -371,7 +392,7 @@ public class FogDevice extends PowerDatacenter {
             }
         }
         // Cloud option
-        double distance_cloud = calculateDistance(locator.getResourceLocationInfo(locator.getDataIdByInstanceID(currentParent.getId())),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(18)));
+        double distance_cloud = calculateDistance(locator.getResourceLocationInfo(locator.getDataIdByInstanceID(currentParent.getId())),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(33)));
         ui = currentParent.getUplinkLatency()*1/distance_cloud;
         double cloudCost = ui + lambdaCloud;
         if (cloudCost < bestCost) {

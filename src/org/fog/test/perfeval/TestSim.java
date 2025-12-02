@@ -35,7 +35,7 @@ public class TestSim {
     static LocationHandler locator;
 
     static double SENSOR_TRANSMISSION_TIME = 10;
-    static int numberOfMobileUser = 5; // 50 smartphones
+    static int numberOfMobileUser = 10; // 50 smartphones
     static int numberOfProxy = 12;
     static int numberOfGateway = 10;
     static int numberOfCloud = 1;
