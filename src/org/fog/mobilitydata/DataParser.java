@@ -21,7 +21,7 @@ public class DataParser {
 
 
     public DataParser() {
-        File configFile = new File("./dataset/config.properties");
+        File configFile = new File("C:/Users/Mustafa Ashraf/Desktop/Masters/Fall 2025/Cloud Computing/Project/FogSim/iFogSim/dataset/config.properties");
         try {
             FileReader reader = new FileReader(configFile);
             Properties props = new Properties();
@@ -101,8 +101,7 @@ public class DataParser {
         for (int i = 0; i < numOfLevels; i++)
             resouresOnLevels[i] = new ArrayList<String>();
 
-
-        BufferedReader csvReader = new BufferedReader(new FileReader("./dataset/edgeResources-melbCBD.csv"));
+        BufferedReader csvReader = new BufferedReader(new FileReader("C:/Users/Mustafa Ashraf/Desktop/Masters/Fall 2025/Cloud Computing/Project/FogSim/iFogSim/dataset/edgeResources-melbCBD.csv"));
         String row;
         while ((row = csvReader.readLine()) != null) {
             String[] data = row.split(",");
