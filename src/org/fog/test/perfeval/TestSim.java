@@ -35,7 +35,7 @@ public class TestSim {
     static LocationHandler locator;
 
     static double SENSOR_TRANSMISSION_TIME = 10;
-    static int numberOfMobileUser = 1; // 50 smartphones
+    static int numberOfMobileUser = 5; // 50 smartphones
     static int numberOfProxy = 12;
     static int numberOfGateway = 10;
     static int numberOfCloud = 1;
@@ -76,18 +76,23 @@ public class TestSim {
             ModuleMapping moduleMapping = ModuleMapping.createModuleMapping();
             moduleMapping.addModuleToDevice("storageModule", "cloud");
 
-            // Assign processingModule to the first gateway device
-            String gatewayName = null;
-            for (FogDevice dev : fogDevices) {
-                if (dev.getName().startsWith("gateway_")) {
-                    gatewayName = dev.getName();
-                    break;
-                }
+            // Ensure each mobile's processingModule executes at its serving gateway
+            Map<Integer, FogDevice> idToDevice = new HashMap<>();
+            for (FogDevice device : fogDevices) {
+                idToDevice.put(device.getId(), device);
             }
-            if (gatewayName != null) {
-                moduleMapping.addModuleToDevice("processingModule", gatewayName);
-            } else {
-                System.out.println("No gateway device found for processingModule placement.");
+
+            for (FogDevice device : fogDevices) {
+                if (!device.getName().startsWith("mobile_")) {
+                    continue;
+                }
+                int gatewayId = locator.determineParent(device.getId(), References.INIT_TIME);
+                FogDevice servingGateway = idToDevice.get(gatewayId);
+                if (servingGateway != null) {
+                    moduleMapping.addModuleToDevice("processingModule", servingGateway.getName());
+                } else {
+                    System.out.println("No serving gateway found for " + device.getName());
+                }
             }
 
             MobilityController controller = new MobilityController("mobility-controller", fogDevices, sensors, actuators, locator);

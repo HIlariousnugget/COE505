@@ -107,12 +107,12 @@ public class LocationHandler {
 		return parentInstanceId;	
 	}	
 
-	private Location getUserLocationInfo(String dataId, double time) {
+	public Location getUserLocationInfo(String dataId, double time) {
 		// TODO Auto-generated method stub
 		return getDataObject().usersLocation.get(dataId).get(time);
 	}
 
-	private Location getResourceLocationInfo(String dataId) {
+	public Location getResourceLocationInfo(String dataId) {
 		// TODO Auto-generated method stub
 		return getDataObject().resourceLocationData.get(dataId);
 	}

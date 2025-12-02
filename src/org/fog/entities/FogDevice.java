@@ -14,8 +14,10 @@ import org.fog.application.AppLoop;
 import org.fog.application.AppModule;
 import org.fog.application.Application;
 import org.fog.mobilitydata.Clustering;
+import org.fog.mobilitydata.Location;
 import org.fog.policy.AppModuleAllocationPolicy;
 import org.fog.scheduler.StreamOperatorScheduler;
+import org.fog.placement.LocationHandler;
 import org.fog.utils.*;
 import org.json.simple.JSONObject;
 
@@ -232,6 +234,8 @@ public class FogDevice extends PowerDatacenter {
         setClusterLinkBusy(false);
     }
 
+
+
     /**
      * Overrides this method when making a new and different type of resource. <br>
      * <b>NOTE:</b> You do not need to override {@link} method, if you use this method.
@@ -298,8 +302,191 @@ public class FogDevice extends PowerDatacenter {
                 //This message is received by the devices to start their clustering
                 processClustering(this.getParentId(), this.getId(), ev);
                 break;
+            case FogEvents.DECENTRALIZED_MOBILITY_PLACEMENT:
+                handleDecentralizedMobilityPlacement(ev);
+                break;
             default:
                 break;
+        }
+    }
+
+            /** Returns the list of AppModule instances currently running on this device. */
+    public List<AppModule> getActiveModules() {
+            List<AppModule> modules = new ArrayList<>();
+            for (Vm vm : getHost().getVmList()) {
+                if (vm instanceof AppModule) {
+                    modules.add((AppModule) vm);
+                }
+            }
+            return modules;
+    }
+
+    public static double calculateDistance(Location loc1, Location loc2) {
+
+        final int R = 6371; // Radius of the earth in Kilometers
+
+        double latDistance = Math.toRadians(loc1.latitude - loc2.latitude);
+        double lonDistance = Math.toRadians(loc1.longitude - loc2.longitude);
+        double a = Math.sin(latDistance / 2) * Math.sin(latDistance / 2)
+                + Math.cos(Math.toRadians(loc1.latitude)) * Math.cos(Math.toRadians(loc2.latitude))
+                * Math.sin(lonDistance / 2) * Math.sin(lonDistance / 2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        double distance = R * c; // kms
+
+
+        distance = Math.pow(distance, 2);
+
+        return Math.sqrt(distance);
+    }
+
+    /** Decentralized migration placement decision. Returns new parent ID or -1 for cloud. */
+    public int decideNewParent(FogDevice currentParent, AppModule module, List<FogDevice> neighbors, LocationHandler locator, double lambdaCloud, Map<Integer, Double> muCpuMap, Map<Integer, Double> muMemMap, Map<Integer, Double> muBwMap) {
+        double bestCost = Double.POSITIVE_INFINITY;
+        int bestFogId = currentParent.getId(); // default to self
+        boolean bestIsCloud = false;
+        double ui = currentParent.getUplinkLatency();
+        for (FogDevice neighbor : neighbors) {
+            double distance_user = calculateDistance(locator.getUserLocationInfo(locator.getDataIdByInstanceID(getId()),CloudSim.clock()),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(neighbor.getId())));
+            ui = neighbor.getUplinkLatency()*1/distance_user;
+            double ds = ui;
+            double distance_neighbor = calculateDistance(locator.getResourceLocationInfo(locator.getDataIdByInstanceID(currentParent.getId())),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(neighbor.getId())));
+            if (distance_neighbor != 0) {
+                ds = ds * 1 / distance_neighbor;
+            }
+            double q_if = 1.0; // Placeholder queueing delay
+            double p_if = module.getSize() / neighbor.getHost().getTotalMips();
+            double cpuDemand = module.getSize();
+            double memDemand = module.getRam();
+            double bwDemand = 50.0;
+            double muCpu = muCpuMap.getOrDefault(neighbor.getId(), 0.0);
+            double muMem = muMemMap.getOrDefault(neighbor.getId(), 0.0);
+            double muBw = muBwMap.getOrDefault(neighbor.getId(), 0.0);
+            double priceTerm = muCpu * cpuDemand + muMem * memDemand + muBw * bwDemand;
+            double cost = ui + ds + q_if + p_if + priceTerm;
+            if (cost < bestCost) {
+                bestCost = cost;
+                bestFogId = neighbor.getId();
+                bestIsCloud = false;
+            }
+        }
+        // Cloud option
+        double distance_cloud = calculateDistance(locator.getResourceLocationInfo(locator.getDataIdByInstanceID(currentParent.getId())),locator.getResourceLocationInfo(locator.getDataIdByInstanceID(18)));
+        ui = currentParent.getUplinkLatency()*1/distance_cloud;
+        double cloudCost = ui + lambdaCloud;
+        if (cloudCost < bestCost) {
+            bestFogId = -1;
+            bestIsCloud = true;
+        }
+        return bestFogId;
+    }
+
+    /** Handles decentralized migration placement at fog node. */
+    protected void handleDecentralizedMobilityPlacement(SimEvent ev) {
+        // Extract fogDevice and locator from event data
+        Map<String, Object> eventData = (Map<String, Object>) ev.getData();
+        FogDevice movingDevice = (FogDevice) eventData.get("fogDevice");
+        LocationHandler locator = (LocationHandler) eventData.get("locator");
+        List<FogDevice>  fogs = (List<FogDevice>) eventData.get("fogs");
+        handleDecentralizedMobilityPlacement(movingDevice, locator,fogs);
+    }
+
+    /** Handles decentralized migration placement at fog node with locator. */
+    protected void handleDecentralizedMobilityPlacement(FogDevice movingDevice, LocationHandler locator,List<FogDevice> fogs) {
+        FogDevice currentParent = (FogDevice) CloudSim.getEntity(getParentId());
+        Integer parentLevel = 2;
+        // For each application, get modules to migrate
+        for (String applicationName : currentParent.getActiveApplications()) {
+            // Use all modules currently running on the current parent as migration candidates
+            List<AppModule> modulesToMigrate = new ArrayList<>();
+            if (currentParent.getActiveModules() != null) {
+                modulesToMigrate.addAll(currentParent.getActiveModules());
+            }
+
+            // Discover neighbor fog devices at the target level (similar to centralized logic)
+            List<FogDevice> neighbors = new ArrayList<>();
+            Integer parentInstanceId = -2;
+            for (int i = 0; i < locator.getLevelWiseResources(parentLevel).size(); i++) {
+                String neighborId = locator.getLevelWiseResources(parentLevel).get(i);
+
+                for (int parentIdIterator : locator.instanceToDataId.keySet()) {
+                    if (locator.instanceToDataId.get(parentIdIterator).equals(neighborId)) {
+                        parentInstanceId = parentIdIterator;
+                        for (FogDevice fog : fogs) {
+                            if (parentInstanceId == fog.getId()) {
+                                neighbors.add(fog);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Local price maps and cloud penalty for decentralized decision
+            Map<Integer, Double> muCpuMap = new HashMap<>();
+            Map<Integer, Double> muMemMap = new HashMap<>();
+            Map<Integer, Double> muBwMap = new HashMap<>();
+            double lambdaCloud = 50.0;
+
+            // Find cloud device id to support migration to cloud
+            int cloudId = -1;
+            for (FogDevice fd : fogs) {
+                if (fd.getName().equalsIgnoreCase("cloud")) {
+                    cloudId = fd.getId();
+                    break;
+                }
+            }
+
+            for (AppModule module : modulesToMigrate) {
+                int newParentId = decideNewParent(currentParent, module, neighbors, locator, lambdaCloud, muCpuMap, muMemMap, muBwMap);
+
+                // Keep module on current parent if decision says so
+                if (newParentId == currentParent.getId()) {
+                    System.out.println("FogDevice " + currentParent.getName() + ": Keeping module " + module.getName() + " on current parent.");
+                    continue;
+                }
+
+                FogDevice targetParent = null;
+                boolean migrateToCloud = false;
+
+                if (newParentId == -1) {
+                    // Migrate to cloud
+                    migrateToCloud = true;
+                    if (cloudId != -1) {
+                        targetParent = (FogDevice) CloudSim.getEntity(cloudId);
+                    }
+                } else {
+                    // Migrate to another fog device
+                    targetParent = (FogDevice) CloudSim.getEntity(newParentId);
+                }
+
+                if (targetParent == null) {
+                    System.out.println("FogDevice " + currentParent.getName() + ": No valid target parent found for module " + module.getName());
+                    continue;
+                }
+
+                // Approximate network delays for module migration (up from current parent, down to target)
+                double upDelay = module.getSize() / currentParent.getUplinkBandwidth();
+                double downDelay = module.getSize() / targetParent.getDownlinkBandwidth();
+
+                JSONObject jsonSend = new JSONObject();
+                jsonSend.put("module", module);
+                jsonSend.put("delay", upDelay);
+
+                JSONObject jsonReceive = new JSONObject();
+                jsonReceive.put("module", module);
+                jsonReceive.put("delay", downDelay);
+                jsonReceive.put("application", currentParent.getApplicationMap().get(module.getAppId()));
+
+                // Trigger migration using existing MODULE_SEND / MODULE_RECEIVE handlers
+                send(currentParent.getId(), upDelay, FogEvents.MODULE_SEND, jsonSend);
+                send(targetParent.getId(), downDelay, FogEvents.MODULE_RECEIVE, jsonReceive);
+
+                if (migrateToCloud) {
+                    System.out.println("FogDevice " + currentParent.getName() + ": Migrated module " + module.getName() + " to CLOUD");
+                } else {
+                    System.out.println("FogDevice " + currentParent.getName() + ": Migrated module " + module.getName() + " to FogDevice " + targetParent.getName());
+                }
+            }
         }
     }
 
